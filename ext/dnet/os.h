@@ -98,7 +98,7 @@
 
 /* Support for flexible arrays. */
 #undef __flexarr
-#if defined(__GNUC__) && ((__GNUC__ > 2) || (__GNUC__ == 2 && __GNUC_MINOR__ >= 97))
+#if defined(__GNUC__) && ((__GNUC__ > 2) || (__GNUC__ == 2 && __GNUC_MINOR__ >= 97)) && !(__clang__)
 /* GCC 2.97 supports C99 flexible array members.  */
 # define __flexarr	[]
 #else
