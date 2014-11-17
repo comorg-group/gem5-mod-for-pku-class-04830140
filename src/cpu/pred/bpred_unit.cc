@@ -33,6 +33,7 @@
 
 #include "cpu/pred/2bit_local.hh"
 #include "cpu/pred/bpred_unit_impl.hh"
+#include "cpu/pred/my_pred_always_true.hh"
 #include "cpu/pred/tournament.hh"
 
 BPredUnit *
@@ -43,6 +44,8 @@ BranchPredictorParams::create()
         return new LocalBP(this);
     } else if (predType == "tournament") {
         return new TournamentBP(this);
+    } else if (predType == "always"){
+    	return new AlwaysBP(this);
     } else {
         fatal("Invalid BP selected!");
     }
