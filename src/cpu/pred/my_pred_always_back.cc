@@ -1,375 +1,199 @@
-/*
- * Copyright (c) 2011 ARM Limited
- * All rights reserved
- *
- * The license below extends only to copyright in the software and shall
- * not be construed as granting a license to any other intellectual
- * property including but not limited to intellectual property relating
- * to a hardware implementation of the functionality of the software
- * licensed hereunder.  You may use the software subject to the license
- * terms below provided that you ensure that this notice is replicated
- * unmodified and in its entirety in all distributions of the software,
- * modified or unmodified, in source code or in binary form.
- *
- * Copyright (c) 2004-2006 The Regents of The University of Michigan
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met: redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer;
- * redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution;
- * neither the name of the copyright holders nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Kevin Lim
- */
+//
+//  my_pred_always_back.cc
+//  gem5-mod-for-pku-class-04830140
+//
+//  Created by Jackie Yang on 2014-12-03.
+//  Copyright (c) 2014 Jackie Yang. All rights reserved.
+//
 
-#include "base/bitfield.hh"
 #include "base/intmath.hh"
-#include "cpu/pred/tournament.hh"
+#include "base/misc.hh"
+#include "base/trace.hh"
+#include "cpu/pred/my_pred_always_back.hh"
+#include "debug/Fetch.hh"
+#include "debug/Branch.hh"
 
-TournamentBP::TournamentBP(const Params *params)
-    : BPredUnit(params),
-      localPredictorSize(params->localPredictorSize),
-      localCtrBits(params->localCtrBits),
-      localHistoryTableSize(params->localHistoryTableSize),
-      localHistoryBits(ceilLog2(params->localPredictorSize)),
-      globalPredictorSize(params->globalPredictorSize),
-      globalCtrBits(params->globalCtrBits),
-      globalHistoryBits(
-          ceilLog2(params->globalPredictorSize) >
-          ceilLog2(params->choicePredictorSize) ?
-          ceilLog2(params->globalPredictorSize) :
-          ceilLog2(params->choicePredictorSize)),
-      choicePredictorSize(params->choicePredictorSize),
-      choiceCtrBits(params->choiceCtrBits),
-      instShiftAmt(params->instShiftAmt)
+#include "arch/isa_traits.hh"
+#include "arch/types.hh"
+#include "arch/utility.hh"
+#include "base/trace.hh"
+#include "config/the_isa.hh"
+#include "cpu/pred/bpred_unit.hh"
+#include "debug/Branch.hh"
+
+BackBP::BackBP(const Params *params) :
+	BPredUnit(params)
 {
-    if (!isPowerOf2(localPredictorSize)) {
-        fatal("Invalid local predictor size!\n");
-    }
 
-    if (!isPowerOf2(globalPredictorSize)) {
-        fatal("Invalid global predictor size!\n");
-    }
-
-    //Set up the array of counters for the local predictor
-    localCtrs.resize(localPredictorSize);
-
-    for (int i = 0; i < localPredictorSize; ++i)
-        localCtrs[i].setBits(localCtrBits);
-
-    localPredictorMask = mask(localHistoryBits);
-
-    if (!isPowerOf2(localHistoryTableSize)) {
-        fatal("Invalid local history table size!\n");
-    }
-
-    //Setup the history table for the local table
-    localHistoryTable.resize(localHistoryTableSize);
-
-    for (int i = 0; i < localHistoryTableSize; ++i)
-        localHistoryTable[i] = 0;
-
-    //Setup the array of counters for the global predictor
-    globalCtrs.resize(globalPredictorSize);
-
-    for (int i = 0; i < globalPredictorSize; ++i)
-        globalCtrs[i].setBits(globalCtrBits);
-
-    //Clear the global history
-    globalHistory = 0;
-    // Set up the global history mask
-    // this is equivalent to mask(log2(globalPredictorSize)
-    globalHistoryMask = globalPredictorSize - 1;
-
-    if (!isPowerOf2(choicePredictorSize)) {
-        fatal("Invalid choice predictor size!\n");
-    }
-
-    // Set up choiceHistoryMask
-    // this is equivalent to mask(log2(choicePredictorSize)
-    choiceHistoryMask = choicePredictorSize - 1;
-
-    //Setup the array of counters for the choice predictor
-    choiceCtrs.resize(choicePredictorSize);
-
-    for (int i = 0; i < choicePredictorSize; ++i)
-        choiceCtrs[i].setBits(choiceCtrBits);
-
-    //Set up historyRegisterMask
-    historyRegisterMask = mask(globalHistoryBits);
-
-    //Check that predictors don't use more bits than they have available
-    if (globalHistoryMask > historyRegisterMask) {
-        fatal("Global predictor too large for global history bits!\n");
-    }
-    if (choiceHistoryMask > historyRegisterMask) {
-        fatal("Choice predictor too large for global history bits!\n");
-    }
-
-    if (globalHistoryMask < historyRegisterMask &&
-        choiceHistoryMask < historyRegisterMask) {
-        inform("More global history bits than required by predictors\n");
-    }
-
-    // Set thresholds for the three predictors' counters
-    // This is equivalent to (2^(Ctr))/2 - 1
-    localThreshold  = (ULL(1) << (localCtrBits  - 1)) - 1;
-    globalThreshold = (ULL(1) << (globalCtrBits - 1)) - 1;
-    choiceThreshold = (ULL(1) << (choiceCtrBits - 1)) - 1;
 }
-
-inline
-unsigned
-TournamentBP::calcLocHistIdx(Addr &branch_addr)
-{
-    // Get low order bits after removing instruction offset.
-    return (branch_addr >> instShiftAmt) & (localHistoryTableSize - 1);
-}
-
-inline
-void
-TournamentBP::updateGlobalHistTaken()
-{
-    globalHistory = (globalHistory << 1) | 1;
-    globalHistory = globalHistory & historyRegisterMask;
-}
-
-inline
-void
-TournamentBP::updateGlobalHistNotTaken()
-{
-    globalHistory = (globalHistory << 1);
-    globalHistory = globalHistory & historyRegisterMask;
-}
-
-inline
-void
-TournamentBP::updateLocalHistTaken(unsigned local_history_idx)
-{
-    localHistoryTable[local_history_idx] =
-        (localHistoryTable[local_history_idx] << 1) | 1;
-}
-
-inline
-void
-TournamentBP::updateLocalHistNotTaken(unsigned local_history_idx)
-{
-    localHistoryTable[local_history_idx] =
-        (localHistoryTable[local_history_idx] << 1);
-}
-
 
 void
-TournamentBP::btbUpdate(Addr branch_addr, void * &bp_history)
+BackBP::reset()
 {
-    unsigned local_history_idx = calcLocHistIdx(branch_addr);
-    //Update Global History to Not Taken (clear LSB)
-    globalHistory &= (historyRegisterMask & ~ULL(1));
-    //Update Local History to Not Taken
-    localHistoryTable[local_history_idx] =
-       localHistoryTable[local_history_idx] & (localPredictorMask & ~ULL(1));
+}
+
+void
+BackBP::btbUpdate(Addr branch_addr, void * &bp_history)
+{
+// Place holder for a function that is called to update predictor history when
+// a BTB entry is invalid or not found.
 }
 
 bool
-TournamentBP::lookup(Addr branch_addr, void * &bp_history)
+BackBP::predictInOrder(StaticInstPtr &inst, const InstSeqNum &seqNum,
+                          int asid, TheISA::PCState &instPC,
+                          TheISA::PCState &predPC, ThreadID tid)
 {
-    bool local_prediction;
-    unsigned local_history_idx;
-    unsigned local_predictor_idx;
+    // See if branch predictor predicts taken.
+    // If so, get its target addr either from the BTB or the RAS.
+    // Save off record of branch stuff so the RAS can be fixed
+    // up once it's done.
 
-    bool global_prediction;
-    bool choice_prediction;
+	DPRINTF(Branch, "override function reached!");
+    using TheISA::MachInst;
 
-    //Lookup in the local predictor to get its branch prediction
-    local_history_idx = calcLocHistIdx(branch_addr);
-    local_predictor_idx = localHistoryTable[local_history_idx]
-        & localPredictorMask;
-    local_prediction = localCtrs[local_predictor_idx].read() > localThreshold;
+    bool pred_taken = false;
+    TheISA::PCState target;
 
-    //Lookup in the global predictor to get its branch prediction
-    global_prediction =
-      globalCtrs[globalHistory & globalHistoryMask].read() > globalThreshold;
+    ++lookups;
+    DPRINTF(Branch, "[tid:%i] [sn:%i] %s ... PC %s doing branch "
+            "prediction\n", tid, seqNum,
+            inst->disassemble(instPC.instAddr()), instPC);
 
-    //Lookup in the choice predictor to see which one to use
-    choice_prediction =
-      choiceCtrs[globalHistory & choiceHistoryMask].read() > choiceThreshold;
+    void *bp_history = NULL;
 
-    // Create BPHistory and pass it back to be recorded.
-    BPHistory *history = new BPHistory;
-    history->globalHistory = globalHistory;
-    history->localPredTaken = local_prediction;
-    history->globalPredTaken = global_prediction;
-    history->globalUsed = choice_prediction;
-    history->localHistory = local_predictor_idx;
-    bp_history = (void *)history;
+    if (inst->isUncondCtrl()) {
+        DPRINTF(Branch, "[tid:%i] Unconditional control.\n", tid);
+        pred_taken = true;
+        // Tell the BP there was an unconditional branch.
+        uncondBranch(bp_history);
 
-    assert(local_history_idx < localHistoryTableSize);
-
-    // Commented code is for doing speculative update of counters and
-    // all histories.
-    if (choice_prediction) {
-        if (global_prediction) {
-            updateGlobalHistTaken();
-            updateLocalHistTaken(local_history_idx);
-            return true;
-        } else {
-            updateGlobalHistNotTaken();
-            updateLocalHistNotTaken(local_history_idx);
-            return false;
+        if (inst->isReturn() && RAS[tid].empty()) {
+            DPRINTF(Branch, "[tid:%i] RAS is empty, predicting "
+                    "false.\n", tid);
+            pred_taken = false;
         }
     } else {
-        if (local_prediction) {
-            updateGlobalHistTaken();
-            updateLocalHistTaken(local_history_idx);
-            return true;
-        } else {
-            updateGlobalHistNotTaken();
-            updateLocalHistNotTaken(local_history_idx);
-            return false;
-        }
-    }
-}
+        ++condPredicted;
 
-void
-TournamentBP::uncondBranch(void * &bp_history)
-{
-    // Create BPHistory and pass it back to be recorded.
-    BPHistory *history = new BPHistory;
-    history->globalHistory = globalHistory;
-    history->localPredTaken = true;
-    history->globalPredTaken = true;
-    history->globalUsed = true;
-    history->localHistory = invalidPredictorIndex;
-    bp_history = static_cast<void *>(history);
-
-    updateGlobalHistTaken();
-}
-
-void
-TournamentBP::update(Addr branch_addr, bool taken, void *bp_history,
-                     bool squashed)
-{
-    unsigned local_history_idx;
-    unsigned local_predictor_idx M5_VAR_USED;
-    unsigned local_predictor_hist;
-
-    // Get the local predictor's current prediction
-    local_history_idx = calcLocHistIdx(branch_addr);
-    local_predictor_hist = localHistoryTable[local_history_idx];
-    local_predictor_idx = local_predictor_hist & localPredictorMask;
-
-    if (bp_history) {
-        BPHistory *history = static_cast<BPHistory *>(bp_history);
-        // Update may also be called if the Branch target is incorrect even if
-        // the prediction is correct. In that case do not update the counters.
-        bool historyPred = false;
-        unsigned old_local_pred_index = history->localHistory &
-                localPredictorMask;
-
-        bool old_local_pred_valid = history->localHistory !=
-            invalidPredictorIndex;
-
-        assert(old_local_pred_index < localPredictorSize);
-
-        if (history->globalUsed) {
-           historyPred = history->globalPredTaken;
-        } else {
-           historyPred = history->localPredTaken;
-        }
-        if (historyPred != taken || !squashed) {
-            // Update the choice predictor to tell it which one was correct if
-            // there was a prediction.
-            if (history->localPredTaken != history->globalPredTaken) {
-                 // If the local prediction matches the actual outcome,
-                 // decerement the counter.  Otherwise increment the
-                 // counter.
-                 unsigned choice_predictor_idx =
-                   history->globalHistory & choiceHistoryMask;
-                 if (history->localPredTaken == taken) {
-                     choiceCtrs[choice_predictor_idx].decrement();
-                 } else if (history->globalPredTaken == taken) {
-                     choiceCtrs[choice_predictor_idx].increment();
-                 }
-
-             }
-
-             // Update the counters and local history with the proper
-             // resolution of the branch.  Global history is updated
-             // speculatively and restored upon squash() calls, so it does not
-             // need to be updated.
-             unsigned global_predictor_idx =
-               history->globalHistory & globalHistoryMask;
-             if (taken) {
-                  globalCtrs[global_predictor_idx].increment();
-                  if (old_local_pred_valid) {
-                          localCtrs[old_local_pred_index].increment();
-                  }
-             } else {
-                  globalCtrs[global_predictor_idx].decrement();
-                  if (old_local_pred_valid) {
-                          localCtrs[old_local_pred_index].decrement();
-                  }
-             }
-        }
-        if (squashed) {
-             if (taken) {
-                globalHistory = (history->globalHistory << 1) | 1;
-                globalHistory = globalHistory & historyRegisterMask;
-                if (old_local_pred_valid) {
-                    localHistoryTable[local_history_idx] =
-                     (history->localHistory << 1) | 1;
-                }
-             } else {
-                globalHistory = (history->globalHistory << 1);
-                globalHistory = globalHistory & historyRegisterMask;
-                if (old_local_pred_valid) {
-                     localHistoryTable[local_history_idx] =
-                     history->localHistory << 1;
-                }
-             }
-
-        }
-        // We're done with this history, now delete it.
-        delete history;
-
+        pred_taken = lookup(predPC.instAddr(), bp_history, asid);
     }
 
-    assert(local_history_idx < localHistoryTableSize);
+    PredictorHistory predict_record(seqNum, predPC.instAddr(), pred_taken,
+                                    bp_history, tid);
 
+    // Now lookup in the BTB or RAS.
+    if (pred_taken) {
+        if (inst->isReturn()) {
+            ++usedRAS;
+
+            // If it's a function return call, then look up the address
+            // in the RAS.
+            TheISA::PCState rasTop = RAS[tid].top();
+            target = TheISA::buildRetPC(instPC, rasTop);
+
+            // Record the top entry of the RAS, and its index.
+            predict_record.usedRAS = true;
+            predict_record.RASIndex = RAS[tid].topIdx();
+            predict_record.RASTarget = rasTop;
+
+            assert(predict_record.RASIndex < 16);
+
+            RAS[tid].pop();
+
+            DPRINTF(Branch, "[tid:%i]: Instruction %s is a return, "
+                    "RAS predicted target: %s, RAS index: %i.\n",
+                    tid, instPC, target,
+                    predict_record.RASIndex);
+        } else {
+            ++BTBLookups;
+
+            if (inst->isCall()) {
+
+                RAS[tid].push(instPC);
+                predict_record.pushedRAS = true;
+
+                // Record that it was a call so that the top RAS entry can
+                // be popped off if the speculation is incorrect.
+                predict_record.wasCall = true;
+
+                DPRINTF(Branch, "[tid:%i]: Instruction %s was a call"
+                        ", adding %s to the RAS index: %i.\n",
+                        tid, instPC, predPC,
+                        RAS[tid].topIdx());
+            }
+
+            if (inst->isCall() &&
+                inst->isUncondCtrl() &&
+                inst->isDirectCtrl()) {
+                target = inst->branchTarget(instPC);
+            } else if (BTB.valid(predPC.instAddr(), asid)) {
+                ++BTBHits;
+
+                // If it's not a return, use the BTB to get the target addr.
+                target = BTB.lookup(predPC.instAddr(), asid);
+
+                DPRINTF(Branch, "[tid:%i]: [asid:%i] Instruction %s "
+                        "predicted target is %s.\n",
+                        tid, asid, instPC, target);
+            } else {
+                DPRINTF(Branch, "[tid:%i]: BTB doesn't have a "
+                        "valid entry, predicting false.\n",tid);
+                pred_taken = false;
+            }
+        }
+    }
+
+    if (pred_taken) {
+        // Set the PC and the instruction's predicted target.
+        predPC = target;
+    }
+    DPRINTF(Branch, "[tid:%i]: [sn:%i]: Setting Predicted PC to %s.\n",
+            tid, seqNum, predPC);
+
+    predHist[tid].push_front(predict_record);
+
+    DPRINTF(Branch, "[tid:%i] [sn:%i] pushed onto front of predHist "
+            "...predHist.size(): %i\n",
+            tid, seqNum, predHist[tid].size());
+
+    return pred_taken;
+}
+
+bool
+BackBP::lookup(Addr branch_addr, void * &bp_history, ThreadID tid)
+{
+    bool taken = true;
+    if(BTB.valid(branch_addr, tid)) {
+    	Addr target = BTB.lookup(branch_addr,tid).instAddr();;
+    	if(target<branch_addr) {
+    		taken = true;
+    	}
+    	else {
+    		taken = false;
+    	}
+    }
+    else {
+    	taken = false;
+    	DPRINTF(Branch, "This case should never be reached?");
+    }
+    return taken;
+}
+
+bool
+BackBP::lookup(Addr branch_addr, void * &bp_history)
+{
+    DPRINTF(Branch, "This should never be reached!");
+    return false;
+}
+
+void
+BackBP::update(Addr branch_addr, bool taken, void *bp_history, bool squashed)
+{
 
 }
 
 void
-TournamentBP::squash(void *bp_history)
+BackBP::uncondBranch(void *&bp_history)
 {
-    BPHistory *history = static_cast<BPHistory *>(bp_history);
-
-    // Restore global history to state prior to this branch.
-    globalHistory = history->globalHistory;
-
-    // Delete this BPHistory now that we're done with it.
-    delete history;
 }
-
-#ifdef DEBUG
-int
-TournamentBP::BPHistory::newCount = 0;
-#endif
