@@ -1,0 +1,12 @@
+running commands in compare.cmd 1 times
+runs started at 1312973225, 562273000, Wed Aug 10 06:47:05 2011
+run 1 started at 1312973225, 562323000, Wed Aug 10 06:47:05 2011
+child started: 0, 1312973225, 562337000, pid=30907, 'specperl /home/mdl/gsun/benchmark/SPEC2006/bin/specdiff -m -l 10 /home/mdl/gsun/benchmark/SPEC2006/benchspec/CPU2006/429.mcf/data/test/output/inp.out inp.out'
+child finished: 0, 1312973225, 726749000, sec=0, nsec=164412000, pid=30907, rc=256
+child started: 0, 1312973225, 726763000, pid=30908, 'specperl /home/mdl/gsun/benchmark/SPEC2006/bin/specdiff -m -l 10 /home/mdl/gsun/benchmark/SPEC2006/benchspec/CPU2006/429.mcf/data/test/output/mcf.out mcf.out'
+child finished: 0, 1312973225, 885431000, sec=0, nsec=158668000, pid=30908, rc=512
+run 1 finished at: 1312973225, 885452000, Wed Aug 10 06:47:05 2011
+run 1 elapsed time: 0, 323129000, 0.323129000
+runs finished at 1312973225, 885464000, Wed Aug 10 06:47:05 2011
+runs elapsed time: 0, 323191000, 0.323191000
+error: a total of 2 children finished with errors

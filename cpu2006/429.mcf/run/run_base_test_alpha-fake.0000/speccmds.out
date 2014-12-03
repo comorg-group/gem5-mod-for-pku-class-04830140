@@ -1,0 +1,10 @@
+running commands in speccmds.cmd 1 times
+runs started at 1312973223, 490286000, Wed Aug 10 06:47:03 2011
+run 1 started at 1312973223, 490340000, Wed Aug 10 06:47:03 2011
+child started: 0, 1312973223, 490353000, pid=30901, '../run_base_test_alpha-fake.0000/mcf_base.alpha-fake inp.in'
+child finished: 0, 1312973223, 529509000, sec=0, nsec=39156000, pid=30901, rc=32256
+run 1 finished at: 1312973223, 529521000, Wed Aug 10 06:47:03 2011
+run 1 elapsed time: 0, 39181000, 0.039181000
+runs finished at 1312973223, 529530000, Wed Aug 10 06:47:03 2011
+runs elapsed time: 0, 39244000, 0.039244000
+error: a total of 1 children finished with errors

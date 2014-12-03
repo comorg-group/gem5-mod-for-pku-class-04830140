@@ -1,0 +1,2 @@
+-C /home/mdl/gsun/benchmark/SPEC2006/benchspec/CPU2006/433.milc/run/run_base_test_alpha-fake.0000
+-i su3imp.in -o su3imp.out -e su3imp.err ../run_base_test_alpha-fake.0000/milc_base.alpha-fake
