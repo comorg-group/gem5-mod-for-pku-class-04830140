@@ -35,6 +35,7 @@ if 'InOrderCPU' in env['CPU_MODELS'] or 'O3CPU' in env['CPU_MODELS']:
 
     Source('my_pred_always_true.cc')
     Source('my_pred_always_back.cc')
+    Source('my_pred_fake_random.cc')
     Source('bpred_unit.cc')
     Source('2bit_local.cc')
     Source('btb.cc')
