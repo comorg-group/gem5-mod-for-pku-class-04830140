@@ -39,12 +39,14 @@ Homework1: Branch Predictor
 3. 到 /m5out/ 文件夹查看最新输出。
 # 结果分析
 使用 bzip2 作为 benchmark，执行 10000000 条指令，最终结果如下
- predType     | lookups | condPredicted | condIncorrect | BTBLookups | BTBHits 
---------------|---------|---------------|---------------|------------|---------
- tournament   | 871351  | 870371        | 781751        | 870709     | 767260  
- 2bit_local   | 871394  | 870465        | 781759        | 869758     | 767336  
- always_true  | 871494  | 870556        | 781819        | 871279     | 767534  
- fake_random  | 871045  | 870005        | 781736        | 105603     | 104471  
- always_back  | 871494  | 870556        | 781819        | 768098     | 767534  
- always_false | 882234  | 881118        | 781692        | 860        | 330     
+
+| predType     | lookups | condPredicted | condIncorrect | BTBLookups | BTBHits |
+|--------------|---------|---------------|---------------|------------|---------|
+| tournament   | 871351  | 870371        | 781751        | 870709     | 767260  |
+| 2bit_local   | 871394  | 870465        | 781759        | 869758     | 767336  |
+| always_true  | 871494  | 870556        | 781819        | 871279     | 767534  |
+| fake_random  | 871045  | 870005        | 781736        | 105603     | 104471  |
+| always_back  | 871494  | 870556        | 781819        | 768098     | 767534  |
+| always_false | 882234  | 881118        | 781692        | 860        | 330     |  
+
 结论：benchmark并不适用测试branch predictor (benchmark太差...)
