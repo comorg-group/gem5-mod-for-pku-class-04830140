@@ -1,7 +1,7 @@
 Homework1: Branch Predictor
 =============
-组员：[杨俊睿](www.yangjunrui.com)(1200012860) [刘当一](https://github.com/liudangyi)
--------------
+组员：[杨俊睿](www.yangjunrui.com)(1200012860) [刘当一](https://github.com/liudangyi)(1100011625)
+
 # 目标
 1. 掌握 gem5 的配置、启动、运行 benchmarks 等操作。
 2. 在 gem5 中“自己实现”三种以上不同的转移预测策略（如永远取下一个地址等），并比较对于性能的影响，提交代码和实验报告。
