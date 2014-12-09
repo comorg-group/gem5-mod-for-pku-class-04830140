@@ -72,7 +72,7 @@ ExecutionUnit::regStats()
 
     predictedCorrect
         .name(name() + ".predicted")
-        .desc("Number of Branches Incorrectly Predicted");
+        .desc("Number of Branches Correctly Predicted");
 
     mispredictPct
         .name(name() + ".mispredictPct")
