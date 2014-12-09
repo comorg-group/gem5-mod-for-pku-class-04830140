@@ -37,7 +37,7 @@ RandomBP::btbUpdate(Addr branch_addr, void * &bp_history)
 bool
 RandomBP::lookup(Addr branch_addr, void * &bp_history)
 {
-    bool pred = (branch_addr >> 4) & 1;
+    bool pred = (branch_addr >> 2) & 1;
     return pred;
 }
 
